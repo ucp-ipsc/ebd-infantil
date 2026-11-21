@@ -1,0 +1,10 @@
+{
+  "name": "ebd-infantil-ipsc",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Calendário e biblioteca da EBD infantil da Igreja Presbiteriana de São Carlos",
+  "scripts": {
+    "start": "node tools/servidor.cjs",
+    "test": "node tools/validar.cjs"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+_site/
+tmp/
+.DS_Store
+Thumbs.db
+*.log
+.wrangler/
+.dev.vars*
+.env*
+!.env.example
+atividades/
