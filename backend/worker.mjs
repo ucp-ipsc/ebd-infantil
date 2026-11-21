@@ -64,8 +64,13 @@ async function body(request,max=180000) {
   try {return JSON.parse(await new Blob(parts).text());}catch{fail(400,'Dados JSON inválidos.');}
 }
 async function github(env,path,options={}) {
-  const result=await fetch('https://api.github.com/repos/'+path,{...options,headers:{'Authorization':'Bearer '+env.GITHUB_TOKEN,'User-Agent':'IPSC-EBD-Coordination','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...options.headers},redirect:'error'});
+  const result=await fetch('https://api.github.com/repos/'+path,{...options,headers:{'Authorization':'Bearer '+env.GITHUB_TOKEN,'User-Agent':'IPSC-EBD-Coordination','Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...options.headers},redirect:'manual'});
   if(result.status===409||result.status===422)fail(409,'O planejamento mudou. Carregue a versão atual antes de publicar novamente.');
+  if(result.status>=300&&result.status<400&&options.headers?.Accept==='application/vnd.github.raw+json'){
+    const location=result.headers.get('Location');const url=new URL(location||'https://invalid.invalid');
+    if(url.protocol!=='https:'||!['raw.githubusercontent.com','objects.githubusercontent.com'].includes(url.hostname))fail(502,'Destino de download inesperado.');
+    const download=await fetch(url.href,{redirect:'error'});if(!download.ok)fail(502,'Não foi possível baixar o material.');return download;
+  }
   if(!result.ok)fail(502,'Não foi possível acessar o repositório. Tente novamente ou avise o responsável.');
   return result;
 }
