@@ -25,7 +25,7 @@ Os 57 PDFs ficam no repositório privado `ucp-ipsc/ebd-infantil-arquivo`, junto 
 
 O Worker busca somente arquivos permitidos no catálogo interno, verifica a sessão e transmite o PDF sem expor o token do GitHub ou uma URL privada de origem. Há sugestões de recursos para 32 das 52 aulas; vinte aulas ainda precisam de materiais. As associações devem ser revistas pelos professores. Os arquivos preservam os créditos originais da editora.
 
-Para acrescentar material, coloque-o no acervo privado; atualize o catálogo público e `backend/catalog.json`; depois publique novamente o Worker. `tools/organizar_acervo.py` documenta a curadoria inicial e não deve ser usado para enviar PDFs a este repositório público.
+Para acrescentar material, a liderança entra em Planejamento, escolhe a aula e usa **Adicionar PDF a esta aula**. Informe o título, selecione um PDF de até 8 MB e clique em **Enviar e publicar PDF**. O arquivo vai para o acervo privado e a associação é publicada automaticamente, independentemente dos rascunhos do calendário. O mesmo PDF não pode ser enviado duas vezes à mesma aula. Se o catálogo mudar simultaneamente, o envio pode precisar ser repetido; um arquivo privado sem associação pode permanecer no histórico. Não é necessário republicar o Worker para cada novo material.
 
 ## Serviço de acesso
 

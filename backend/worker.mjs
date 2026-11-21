@@ -3,8 +3,8 @@ const decode = new TextDecoder();
 const SITE_REPO = 'ucp-ipsc/ebd-infantil';
 const PLAN_PATH = 'dados/planejamento.js';
 const TTL = 1800;
-const b64 = bytes => {let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(text);};
-const bytes = value => Uint8Array.from(atob(value), c => c.charCodeAt(0));
+const b64 = bytes => {if(bytes.toBase64)return bytes.toBase64();let text='';for(let i=0;i<bytes.length;i+=8192)text+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(text);};
+const bytes = value => Uint8Array.fromBase64?Uint8Array.fromBase64(value):Uint8Array.from(atob(value), c => c.charCodeAt(0));
 const url64 = value => b64(encoder.encode(value)).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
 const unurl64 = value => decode.decode(bytes(value.replace(/-/g,'+').replace(/_/g,'/')));
 class ApiError extends Error { constructor(status,message){super(message);this.status=status;} }
@@ -83,6 +83,33 @@ async function currentPlan(env){
   let plan;try{plan=JSON.parse(match[1]);}catch{fail(502,'Planejamento do repositório inválido.');}
   return {plan:validatePlan(plan),sha:result.sha};
 }
+const CATALOG_PATH='dados/materiais.js';
+async function currentCatalog(env){
+ const result=await (await github(env,SITE_REPO+'/contents/'+CATALOG_PATH+'?ref=main')).json();
+ if(result.encoding!=='base64'||!result.sha)fail(502,'Catálogo indisponível.');
+ const source=decode.decode(bytes(result.content.replace(/\s/g,'')));
+ const match=source.match(/^\s*window\.EBD_MATERIALS\s*=\s*([\s\S]*?);?\s*$/);
+ let list;try{list=JSON.parse(match?.[1]);}catch{fail(502,'Catálogo inválido.');}
+ if(!Array.isArray(list))fail(502,'Catálogo inválido.');
+ return {list,sha:result.sha};
+}
+async function uploadMaterial(request,env){
+ const input=await body(request,12*1024*1024);
+ if(typeof input.title!=='string'||!input.title.trim()||input.title.length>180||!/^aula-(0[1-9]|[1-4]\d|5[0-2])$/.test(input.lesson||'')||typeof input.content!=='string'||input.content.length>11184812)fail(400,'Informe título, aula e um PDF de até 8 MB.');
+ let file;try{file=bytes(input.content);}catch{fail(400,'Arquivo inválido.');}
+ if(file.length>8*1024*1024)fail(413,'O PDF deve ter até 8 MB.');
+ if(file.length<8||decode.decode(file.subarray(0,5))!=='%PDF-')fail(400,'Selecione um arquivo PDF válido.');
+ if(!/^ucp-ipsc\/[a-z0-9-]+$/.test(env.MATERIAL_REPO||''))fail(503,'Acervo privado não configurado.');
+ const catalog=await currentCatalog(env);
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',file)),n=>n.toString(16).padStart(2,'0')).join('');
+ if(catalog.list.some(m=>m.sha256===hash&&m.lessons.includes(input.lesson)))fail(409,'Este PDF já está associado a esta aula.');
+ const id='recurso-'+crypto.randomUUID();
+ const material={id,title:input.title.trim(),path:'atividades/envios/'+input.lesson+'/'+id+'.pdf',format:'PDF',age:'Adaptar à turma',kind:'Material enviado pela liderança',sourceYear:String(new Date().getUTCFullYear()),source:'Envio pela coordenação',lessons:[input.lesson],match:'same-story',context:'Material associado pela liderança à aula.',bytes:file.length,sha256:hash};
+ await github(env,env.MATERIAL_REPO+'/contents/'+material.path,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Adiciona material da EBD',branch:'main',content:input.content})});
+ // A conflict only leaves an unlisted private file; no existing catalogue is overwritten.
+ const result=await (await github(env,SITE_REPO+'/contents/'+CATALOG_PATH,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'Associa PDF à aula da EBD',branch:'main',sha:catalog.sha,content:b64(encoder.encode('window.EBD_MATERIALS = '+JSON.stringify([...catalog.list,material],null,2)+';\n'))})})).json();
+ return {material,commit:result.commit.sha,actionsUrl:'https://github.com/'+SITE_REPO+'/actions'};
+}
 export default {
  async fetch(request,env) {
   const origin=request.headers.get('Origin');
@@ -106,14 +133,14 @@ export default {
    const user=await session(request,env);
    if(!env.ACCESS_LIMITER||!(await env.ACCESS_LIMITER.limit({key:user.user+':'+(request.headers.get('CF-Connecting-IP')||'unknown')})).success)fail(429,'Muitos acessos. Aguarde um minuto.');
    if(route.startsWith('/materials/')&&request.method==='GET'){
-    const id=route.slice('/materials/'.length);if(!/^recurso-\d{3}$/.test(id))fail(404,'Material não encontrado.');
-    // The catalogue is bundled server-side; clients never choose a repository or file path.
-    const material=env.MATERIAL_CATALOG?.[id];if(!material||!material.path.startsWith('atividades/')||material.path.includes('..'))fail(404,'Material não encontrado.');
+    const id=route.slice('/materials/'.length);if(!/^recurso-(?:\d{3}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(id))fail(404,'Material não encontrado.');
+    const material=(await currentCatalog(env)).list.find(m=>m.id===id);if(!material||!material.path.startsWith('atividades/')||material.path.includes('..'))fail(404,'Material não encontrado.');
     if(!/^ucp-ipsc\/[a-z0-9-]+$/.test(env.MATERIAL_REPO||''))fail(503,'Acervo privado não configurado.');
     const file=await github(env,env.MATERIAL_REPO+'/contents/'+material.path.split('/').map(encodeURIComponent).join('/')+'?ref=main',{headers:{Accept:'application/vnd.github.raw+json'}});
     return new Response(file.body,{headers:{...headers,'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="'+id+'.pdf"'}});
    }
    if(user.role!=='coordinator')fail(403,'Somente a liderança pode alterar o planejamento.');
+   if(route==='/materials'&&request.method==='POST')return json(await uploadMaterial(request,env));
    if(route==='/plan'&&request.method==='GET')return json(await currentPlan(env));
    if(route==='/plan'&&request.method==='POST'){
     const input=await body(request);const plan=validatePlan(input.plan);

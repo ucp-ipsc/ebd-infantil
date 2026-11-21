@@ -43,5 +43,5 @@
       }catch(error){$('#access-status').textContent=error.message;}
     });
   }
-  window.EBD_AUTH={requireRole,download,role:()=>active()?.role||null,async getPlan(){return (await request('/plan')).json();},async publish(plan,sha){return (await request('/plan',{method:'POST',body:JSON.stringify({plan,sha})})).json();}};
+  window.EBD_AUTH={requireRole,download,role:()=>active()?.role||null,async uploadMaterial(data){return (await request('/materials',{method:'POST',body:JSON.stringify(data)})).json();},async getPlan(){return (await request('/plan')).json();},async publish(plan,sha){return (await request('/plan',{method:'POST',body:JSON.stringify({plan,sha})})).json();}};
 })();

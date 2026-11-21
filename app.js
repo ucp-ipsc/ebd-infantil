@@ -178,6 +178,23 @@
     if(!confirm('Carregar o planejamento atual? As alterações locais serão descartadas. Exporte seu rascunho antes se quiser guardá-lo.'))return;
     try{await loadRemote();localStorage.removeItem(key);localStorage.removeItem(key+'-base');$('#publish-status').textContent='Versão atual carregada.';}catch(error){$('#publish-status').textContent=error.message;}
   };
+  $('#upload-form').onsubmit=async e=>{
+    e.preventDefault();if(publishBusy)return;
+    const file=$('#upload-file').files[0],title=$('#upload-name').value.trim(),lesson=selectedId;
+    if(!file||!title)return;
+    if(file.size>8*1024*1024){$('#upload-status').textContent='O PDF deve ter até 8 MB.';return;}
+    const selected=plan.lessons.find(l=>l.id===lesson);
+    if(!confirm(`Enviar e publicar “${title}” na aula “${selected.title}”?`))return;
+    publishBusy=true;$('#upload-submit').disabled=true;$('#publish-plan').disabled=true;$('#editor-lesson').disabled=true;
+    $('#upload-status').textContent='Enviando o PDF… Aguarde a confirmação antes de fechar.';
+    try{
+      const content=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('Não foi possível ler o arquivo.'));reader.readAsDataURL(file);});
+      const result=await window.EBD_AUTH.uploadMaterial({title,lesson,content});
+      materials.push(result.material);render();$('#upload-form').reset();
+      $('#upload-status').textContent='PDF enviado e associado! Já está disponível nesta aba; a publicação o disponibilizará no site para todos.';
+    }catch(error){$('#upload-status').textContent=error.message;}
+    finally{publishBusy=false;$('#upload-submit').disabled=false;$('#publish-plan').disabled=false;$('#editor-lesson').disabled=false;}
+  };
   $('#publish-plan').onclick=async()=>{
     if(publishBusy)return;
     if(editorDirty){$('#publish-status').textContent='Salve primeiro as alterações da aula no rascunho.';return;}
